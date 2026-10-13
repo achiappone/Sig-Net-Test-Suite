@@ -18,6 +18,16 @@ struct ManagerSettingsView: View {
         return Set(stride(from: 0, to: v.count - 1, by: 2).map { mgrU16(v[$0...]) })
     }
     private func shown(_ order: [UInt16]) -> [UInt16] { order.filter { supported?.contains($0) ?? true } }
+    /// Supported parameters no list above names, manufacturer ones included: root (or unknown) ones, or data-port ones.
+    private func others(port: Bool) -> [UInt16] {
+        guard let supported else { return [] }
+        let listed = Set(Self.rootOrder + Self.networkOrder + Self.portOrder)
+        return supported.filter { tid in
+            guard !listed.contains(tid) else { return false }
+            guard let t = ManagerTID.byTID[tid] else { return !port && tid >= 0x8000 } // unknown standard TIDs aren't parameters
+            return (t.get || t.set) && (t.scope == "D") == port
+        }.sorted()
+    }
     private var ports: [UInt16] {
         let n = device.root(0x0602).map(mgrU16) ?? UInt16(device.params.keys.filter { $0 != 0 && $0 != 0xFFFF }.count)
         return n == 0 ? [] : Array(1...n)
@@ -42,13 +52,21 @@ struct ManagerSettingsView: View {
                     ForEach(network, id: \.self) { parameterRow(manager, device, ep: 0, tid: $0) }
                 }
             }
+            let more = others(port: false)
+            if !more.isEmpty {
+                ModulePanel("Other parameters") {
+                    Text("Reported by the device").font(.system(size: 11)).foregroundStyle(Color.silk)
+                } content: {
+                    ForEach(more, id: \.self) { parameterRow(manager, device, ep: 0, tid: $0) }
+                }
+            }
             ForEach(ports, id: \.self) { ep in
                 ModulePanel("Port \(ep)") {
                     if let u = device.params[ep]?[0x0901] {
                         Text("Universe \(ManagerLabels.value(0x0901, u))").font(.system(size: 11, design: .monospaced)).foregroundStyle(Color.silk)
                     }
                 } content: {
-                    ForEach(shown(Self.portOrder), id: \.self) { parameterRow(manager, device, ep: ep, tid: $0) }
+                    ForEach(shown(Self.portOrder) + others(port: true), id: \.self) { parameterRow(manager, device, ep: ep, tid: $0) }
                 }
             }
         }

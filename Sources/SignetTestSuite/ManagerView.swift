@@ -342,10 +342,16 @@ func parameterRow(_ manager: Manager, _ device: ManagerDevice, ep: UInt16, tid: 
             guard let v = ManagerLabels.encode(tid, text) else { return done(.refused("Not a valid value for \(ManagerLabels.title(tid).lowercased())")) }
             manager.setSignal(target, ep: ep, tid: tid, value: v, done: done)
         }
+    case nil where ManagerTID.byTID[tid] == nil && tid >= 0x8000:
+        // A manufacturer TID the catalogue doesn't know: raw hex both ways; the device refuses what it won't take.
+        setMode = .text(initial: current.map(mgrHex) ?? "") { text, done in
+            guard let v = mgrBytes(hex: text), !v.isEmpty else { return done(.refused("Enter the value as hex bytes")) }
+            manager.setSignal(target, ep: ep, tid: tid, value: v, done: done)
+        }
     case nil:
         setMode = nil
     }
-    let gettable = ManagerTID.byTID[tid]?.get ?? false
+    let gettable = ManagerTID.byTID[tid]?.get ?? (tid >= 0x8000)
     return ReadoutRow(label: ManagerLabels.title(tid),
                       value: current.map { ManagerLabels.value(tid, $0) },
                       get: gettable ? { done in manager.getSignal(target, ep: ep, tid: tid, done: done) } : nil,
