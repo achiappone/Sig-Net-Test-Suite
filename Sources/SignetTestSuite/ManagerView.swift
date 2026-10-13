@@ -322,6 +322,9 @@ extension Manager {
 func parameterRow(_ manager: Manager, _ device: ManagerDevice, ep: UInt16, tid: UInt16) -> ReadoutRow {
     let current = device.params[ep]?[tid]
     let target = device.tuid
+    if tid >= 0x8000, tid <= 0xFF00, let m = ManufacturerTIDs.entry(esta: mgrU16(target), tid: tid) {
+        return manufacturerRow(manager, device, ep: ep, tid: tid, m)
+    }
     let setMode: SetMode?
     if let options = ManagerLabels.multiByteChoices[tid] {
         return ReadoutRow(label: ManagerLabels.title(tid), value: current.map { ManagerLabels.value(tid, $0) },
@@ -355,6 +358,34 @@ func parameterRow(_ manager: Manager, _ device: ManagerDevice, ep: UInt16, tid: 
     return ReadoutRow(label: ManagerLabels.title(tid),
                       value: current.map { ManagerLabels.value(tid, $0) },
                       get: gettable ? { done in manager.getSignal(target, ep: ep, tid: tid, done: done) } : nil,
+                      set: setMode,
+                      enabled: manager.running && !manager.busy)
+}
+
+/// A manufacturer TID named in ManufacturerTIDs: its name, and a number in its range (or raw hex) both ways.
+private func manufacturerRow(_ manager: Manager, _ device: ManagerDevice, ep: UInt16, tid: UInt16, _ m: ManufacturerTIDs.Entry) -> ReadoutRow {
+    let current = device.params[ep]?[tid], target = device.tuid
+    let width = [1, 2, 4].contains(m.bytes ?? 1) ? m.bytes ?? 1 : 1
+    let number = m.min != nil || m.max != nil
+    let range = (m.min ?? 0)...max(m.min ?? 0, m.max ?? (Int64(1) << (8 * width)) - 1)
+    let decimal = { (v: [UInt8]) -> Int64? in v.count == width ? v.reduce(Int64(0)) { $0 << 8 | Int64($1) } : nil }
+    let setMode: SetMode?
+    if m.settable == false {
+        setMode = nil
+    } else if number {
+        setMode = .number(initial: current.flatMap(decimal).map(String.init) ?? "", range: range) { text, done in
+            guard let n = Int64(text), range.contains(n) else { return done(.refused("\(m.name): \(range.lowerBound)-\(range.upperBound)")) }
+            manager.setSignal(target, ep: ep, tid: tid, value: (0..<width).reversed().map { UInt8(truncatingIfNeeded: n >> (8 * $0)) }, done: done)
+        }
+    } else {
+        setMode = .text(initial: current.map(mgrHex) ?? "") { text, done in
+            guard let v = mgrBytes(hex: text), !v.isEmpty else { return done(.refused("Enter the value as hex bytes")) }
+            manager.setSignal(target, ep: ep, tid: tid, value: v, done: done)
+        }
+    }
+    return ReadoutRow(label: m.name,
+                      value: current.map { v in number ? decimal(v).map(String.init) ?? mgrHex(v) : mgrHex(v) },
+                      get: { done in manager.getSignal(target, ep: ep, tid: tid, done: done) },
                       set: setMode,
                       enabled: manager.running && !manager.busy)
 }

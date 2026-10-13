@@ -1,3 +1,4 @@
+import AppKit
 import SigNet
 import SwiftUI
 
@@ -55,7 +56,11 @@ struct ManagerSettingsView: View {
             let more = others(port: false)
             if !more.isEmpty {
                 ModulePanel("Other parameters") {
-                    Text("Reported by the device").font(.system(size: 11)).foregroundStyle(Color.silk)
+                    Text(ManufacturerTIDs.problem ?? "Reported by the device").font(.system(size: 11))
+                        .foregroundStyle(ManufacturerTIDs.problem == nil ? Color.silk : Color.red)
+                    Button("Edit names") { NSWorkspace.shared.open(ManufacturerTIDs.url) }.buttonStyle(.softKey)
+                        .help("Names and SET ranges for manufacturer parameters: \(ManufacturerTIDs.url.path)")
+                    Button("Reload") { ManufacturerTIDs.reload(); manager.objectWillChange.send() }.buttonStyle(.softKey)
                 } content: {
                     ForEach(more, id: \.self) { parameterRow(manager, device, ep: 0, tid: $0) }
                 }
