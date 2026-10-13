@@ -19,7 +19,7 @@ enum ManufacturerTIDs {
         var choices: [Choice]?
         /// Names for the parts of the GET value, in order, e.g. [{"name": "Patched", "bytes": 2}]: "Patched 3 · …".
         var fields: [Field]?
-        /// Asked before any SET is sent, e.g. what it will do to the rig. Cancel is the default.
+        /// Asked before a SET is sent (not for an all-zero "no"), e.g. what it will do to the rig. Cancel is the default.
         var confirm: String?
     }
 
@@ -27,10 +27,10 @@ enum ManufacturerTIDs {
     struct Field: Codable { var name: String; var bytes: Int }
 
     static let defaults: [Entry] = [
-        // Chauvet WELL CONNECT. Auto Patch: SET "PTCH" (50544348) wipes and rebuilds the patch; GET = running, status,
+        // Chauvet WELL CONNECT. Auto Patch: SET 1 wipes and rebuilds the patch (0 = no); GET = running, status,
         // patched u16, unaddressed u16. App Mode Output: bit 0 Sig-Net, 1 Art-Net, 2 sACN.
         Entry(esta: "21A4", tid: "8001", name: "Auto Patch",
-              choices: [Choice(label: "Start", hex: "50544348")],
+              choices: [Choice(label: "No", hex: "00"), Choice(label: "Yes, run Auto Patch", hex: "01")],
               fields: [Field(name: "Running", bytes: 1), Field(name: "Status", bytes: 1), Field(name: "Patched", bytes: 2), Field(name: "Unaddressed", bytes: 2)],
               confirm: "Auto Patch wipes the box's patch and readdresses every fixture. The box only accepts it in Secure mode."),
         Entry(esta: "21A4", tid: "8002", name: "App Mode Output", min: 0, max: 7, bytes: 1),

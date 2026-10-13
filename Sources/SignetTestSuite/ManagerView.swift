@@ -371,7 +371,7 @@ private func manufacturerRow(_ manager: Manager, _ device: ManagerDevice, ep: UI
     let decimal = { (v: [UInt8]) -> Int64? in v.count == width ? v.reduce(Int64(0)) { $0 << 8 | Int64($1) } : nil }
     // Every SET goes through here: the entry's warning first, when it has one.
     let send = { (v: [UInt8], done: @escaping (Signal) -> Void) in
-        if let warning = m.confirm {
+        if let warning = m.confirm, v.contains(where: { $0 != 0 }) {
             let alert = NSAlert()
             alert.alertStyle = .warning
             alert.messageText = "Send \(m.name)?"
