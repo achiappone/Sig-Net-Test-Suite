@@ -369,22 +369,49 @@ private func manufacturerRow(_ manager: Manager, _ device: ManagerDevice, ep: UI
     let number = m.min != nil || m.max != nil
     let range = (m.min ?? 0)...max(m.min ?? 0, m.max ?? (Int64(1) << (8 * width)) - 1)
     let decimal = { (v: [UInt8]) -> Int64? in v.count == width ? v.reduce(Int64(0)) { $0 << 8 | Int64($1) } : nil }
+    // Every SET goes through here: the entry's warning first, when it has one.
+    let send = { (v: [UInt8], done: @escaping (Signal) -> Void) in
+        if let warning = m.confirm {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "Send \(m.name)?"
+            alert.informativeText = warning
+            alert.addButton(withTitle: "Cancel")
+            alert.addButton(withTitle: "Send")
+            guard alert.runModal() == .alertSecondButtonReturn else { return done(.refused("Cancelled")) }
+        }
+        manager.setSignal(target, ep: ep, tid: tid, value: v, done: done)
+    }
     let setMode: SetMode?
     if m.settable == false {
         setMode = nil
+    } else if let choices = m.choices, !choices.isEmpty {
+        setMode = .choices(choices.map(\.label)) { i, done in
+            guard let v = mgrBytes(hex: choices[i].hex), !v.isEmpty else { return done(.refused("\(choices[i].label): not hex in the table")) }
+            send(v, done)
+        }
     } else if number {
         setMode = .number(initial: current.flatMap(decimal).map(String.init) ?? "", range: range) { text, done in
             guard let n = Int64(text), range.contains(n) else { return done(.refused("\(m.name): \(range.lowerBound)-\(range.upperBound)")) }
-            manager.setSignal(target, ep: ep, tid: tid, value: (0..<width).reversed().map { UInt8(truncatingIfNeeded: n >> (8 * $0)) }, done: done)
+            send((0..<width).reversed().map { UInt8(truncatingIfNeeded: n >> (8 * $0)) }, done)
         }
     } else {
         setMode = .text(initial: current.map(mgrHex) ?? "") { text, done in
             guard let v = mgrBytes(hex: text), !v.isEmpty else { return done(.refused("Enter the value as hex bytes")) }
-            manager.setSignal(target, ep: ep, tid: tid, value: v, done: done)
+            send(v, done)
         }
     }
+    // Named parts of the value ("Patched 3 · Unaddressed 0"), big-endian; anything left over or short stays hex.
+    let described = { (v: [UInt8]) -> String? in
+        guard let fields = m.fields, fields.reduce(0, { $0 + $1.bytes }) == v.count else { return nil }
+        var i = 0
+        return fields.map { f in
+            defer { i += f.bytes }
+            return "\(f.name) \(v[i..<i + f.bytes].reduce(Int64(0)) { $0 << 8 | Int64($1) })"
+        }.joined(separator: " · ")
+    }
     return ReadoutRow(label: m.name,
-                      value: current.map { v in number ? decimal(v).map(String.init) ?? mgrHex(v) : mgrHex(v) },
+                      value: current.map { v in described(v) ?? (number ? decimal(v).map(String.init) ?? mgrHex(v) : mgrHex(v)) },
                       get: { done in manager.getSignal(target, ep: ep, tid: tid, done: done) },
                       set: setMode,
                       enabled: manager.running && !manager.busy)
