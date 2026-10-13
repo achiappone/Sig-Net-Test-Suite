@@ -4,7 +4,7 @@ import Foundation
 /// maker's own spec says, and only under that maker's ESTA ID (PF §10.1.2). So they come from this table, a JSON file
 /// the user edits (Parameters → Other parameters → Edit names), created with `defaults` on first launch.
 enum ManufacturerTIDs {
-    /// One TID. `esta` and `tid` are hex ("21A4", "8001"). With `min`/`max` the value is a big-endian number of `bytes`
+    /// One TID. `esta` and `tid` are hex ("7FF0", "8001"). With `min`/`max` the value is a big-endian number of `bytes`
     /// bytes (1, 2 or 4; default 1) set on the keypad within that range; without them it is raw hex. `settable: false`
     /// = GET only.
     struct Entry: Codable {
@@ -26,15 +26,8 @@ enum ManufacturerTIDs {
     struct Choice: Codable { var label: String; var hex: String }
     struct Field: Codable { var name: String; var bytes: Int }
 
-    static let defaults: [Entry] = [
-        // Chauvet WELL CONNECT. Auto Patch: SET 1 wipes and rebuilds the patch (0 = no); GET = running, status,
-        // patched u16, unaddressed u16. App Mode Output: bit 0 Sig-Net, 1 Art-Net, 2 sACN.
-        Entry(esta: "21A4", tid: "8001", name: "Auto Patch",
-              choices: [Choice(label: "No", hex: "00"), Choice(label: "Yes, run Auto Patch", hex: "01")],
-              fields: [Field(name: "Running", bytes: 1), Field(name: "Status", bytes: 1), Field(name: "Patched", bytes: 2), Field(name: "Unaddressed", bytes: 2)],
-              confirm: "Auto Patch wipes the box's patch and readdresses every fixture. The box only accepts it in Secure mode."),
-        Entry(esta: "21A4", tid: "8002", name: "App Mode Output", min: 0, max: 7, bytes: 1),
-    ]
+    /// Empty: the app knows no manufacturer's TIDs. Users add their own to the JSON file.
+    static let defaults: [Entry] = []
 
     static var url: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
