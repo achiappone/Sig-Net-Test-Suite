@@ -325,6 +325,27 @@ func parameterRow(_ manager: Manager, _ device: ManagerDevice, ep: UInt16, tid: 
     if tid >= 0x8000, tid <= 0xFF00, let m = ManufacturerTIDs.entry(esta: mgrU16(target), tid: tid) {
         return manufacturerRow(manager, device, ep: ep, tid: tid, m)
     }
+    // RT_REBOOT (§11.6.10) and RT_OFFBOARD are commands, not settings: SET only (they can't be read), each with its
+    // fixed magic word, and asked for first.
+    if tid == 0x060A || tid == 0x0401 {
+        let boot = Array("BOOT".utf8)
+        let options: [(label: String, value: [UInt8], warning: String)] = tid == 0x060A
+            ? [("Restart software", [0xFE] + boot, "The device restarts its software and drops off the network for a moment."),
+               ("Reboot hardware", [0xFF] + boot, "The device reboots completely and is off the network until it's back up.")]
+            : [("Offboard", Array("WIPE".utf8), "The device forgets its passphrase and leaves Secure mode. Devices usually only accept this shortly after power-on.")]
+        return ReadoutRow(label: ManagerLabels.title(tid), value: nil,
+                          set: .choices(options.map(\.label)) { i, done in
+                              let alert = NSAlert()
+                              alert.alertStyle = .warning
+                              alert.messageText = "\(options[i].label)?"
+                              alert.informativeText = options[i].warning
+                              alert.addButton(withTitle: "Cancel")
+                              alert.addButton(withTitle: options[i].label)
+                              guard alert.runModal() == .alertSecondButtonReturn else { return done(.refused("Cancelled")) }
+                              manager.setSignal(target, ep: ep, tid: tid, value: options[i].value, done: done)
+                          },
+                          enabled: manager.running && !manager.busy)
+    }
     let setMode: SetMode?
     if let options = ManagerLabels.multiByteChoices[tid] {
         return ReadoutRow(label: ManagerLabels.title(tid), value: current.map { ManagerLabels.value(tid, $0) },
