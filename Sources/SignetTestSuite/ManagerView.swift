@@ -1,3 +1,4 @@
+import AppKit
 import SigNet
 import SwiftUI
 
@@ -331,7 +332,16 @@ func parameterRow(_ manager: Manager, _ device: ManagerDevice, ep: UInt16, tid: 
     }
     switch ManagerLabels.editor(tid) {
     case .choice(let options):
-        setMode = .choices(options.map(\.1)) { i, done in manager.setSignal(target, ep: ep, tid: tid, value: [options[i].0], done: done) }
+        setMode = .choices(options.map(\.1)) { i, done in
+            // §11.7.11: switching a Secure Node's port to Art-Net/sACN drops authentication from its level data, so the
+            // Manager shall warn and get the operator's confirmation first.
+            if tid == 0x090B, options[i].0 != 0, manager.securitySettings.mode == .secure,
+               !confirm("Switch Port \(ep) to \(options[i].1)?",
+                        "Level data on this port will no longer be authenticated: anyone on the network can drive it. Sig-Net management stays secure.") {
+                return done(.refused("Cancelled"))
+            }
+            manager.setSignal(target, ep: ep, tid: tid, value: [options[i].0], done: done)
+        }
     case .number(let r):
         setMode = .number(initial: ManagerLabels.draft(tid, current), range: Int64(r.lowerBound)...Int64(r.upperBound)) { text, done in
             guard let v = ManagerLabels.encode(tid, text) else { return done(.refused("Not a valid value for \(ManagerLabels.title(tid).lowercased())")) }
@@ -351,6 +361,17 @@ func parameterRow(_ manager: Manager, _ device: ManagerDevice, ep: UInt16, tid: 
                       get: gettable ? { done in manager.getSignal(target, ep: ep, tid: tid, done: done) } : nil,
                       set: setMode,
                       enabled: manager.running && !manager.busy)
+}
+
+/// A modal warning with Cancel as the default; true = the operator chose to go ahead.
+private func confirm(_ title: String, _ detail: String) -> Bool {
+    let alert = NSAlert()
+    alert.alertStyle = .warning
+    alert.messageText = title
+    alert.informativeText = detail
+    alert.addButton(withTitle: "Cancel")
+    alert.addButton(withTitle: "Switch")
+    return alert.runModal() == .alertSecondButtonReturn
 }
 
 // MARK: - Info
