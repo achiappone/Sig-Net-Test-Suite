@@ -7,6 +7,7 @@ import SwiftUI
 struct ManagerSettingsView: View {
     @ObservedObject var manager: Manager
     let device: ManagerDevice
+    @State private var editing = false
 
     private static let rootOrder: [UInt16] = [0x0605, 0x0607, 0x0606]
     private static let networkOrder: [UInt16] = [0x0501, 0x0502, 0x0503, 0x0504, 0x0505, 0x0506, 0x0581, 0x0582, 0x0583, 0x0584, 0x0585]
@@ -58,9 +59,8 @@ struct ManagerSettingsView: View {
                 ModulePanel("Other parameters") {
                     Text(ManufacturerTIDs.problem ?? "Reported by the device").font(.system(size: 11))
                         .foregroundStyle(ManufacturerTIDs.problem == nil ? Color.silk : Color.red)
-                    Button("Edit names") { NSWorkspace.shared.open(ManufacturerTIDs.url) }.buttonStyle(.softKey)
-                        .help("Names and SET ranges for manufacturer parameters: \(ManufacturerTIDs.url.path)")
-                    Button("Reload") { ManufacturerTIDs.reload(); manager.objectWillChange.send() }.buttonStyle(.softKey)
+                    Button("Edit") { editing = true }.buttonStyle(.softKey)
+                        .help("Names and SET ranges for manufacturer parameters")
                 } content: {
                     ForEach(more, id: \.self) { parameterRow(manager, device, ep: 0, tid: $0) }
                 }
@@ -74,6 +74,9 @@ struct ManagerSettingsView: View {
                     ForEach(shown(Self.portOrder) + others(port: true), id: \.self) { parameterRow(manager, device, ep: ep, tid: $0) }
                 }
             }
+        }
+        .sheet(isPresented: $editing) {
+            ManufacturerTIDsEditor { manager.objectWillChange.send() }
         }
     }
 }

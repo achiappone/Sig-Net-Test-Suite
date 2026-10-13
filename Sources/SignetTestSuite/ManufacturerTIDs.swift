@@ -2,7 +2,7 @@ import Foundation
 
 /// Names and SET ranges for manufacturer TIDs (0x8000-0xFF00). Sig-Net carries none: a manufacturer TID means what its
 /// maker's own spec says, and only under that maker's ESTA ID (PF §10.1.2). So they come from this table, a JSON file
-/// the user edits (Parameters → Other parameters → Edit names), created with `defaults` on first launch.
+/// the user edits in the app (Parameters → Other parameters → Edit), created with `defaults` on first launch.
 enum ManufacturerTIDs {
     /// One TID. `esta` and `tid` are hex ("7FF0", "8001"). With `min`/`max` the value is a big-endian number of `bytes`
     /// bytes (1, 2 or 4; default 1) set on the keypad within that range; without them it is raw hex. `settable: false`
@@ -39,6 +39,16 @@ enum ManufacturerTIDs {
     private(set) static var problem: String?
 
     static func reload() { entries = load() }
+
+    /// Write the table and use it straight away.
+    static func save(_ list: [Entry]) throws {
+        let enc = JSONEncoder()
+        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try enc.encode(list).write(to: url, options: .atomic)
+        entries = list
+        problem = nil
+    }
 
     static func entry(esta: UInt16, tid: UInt16) -> Entry? {
         entries.first { hex($0.esta) == esta && hex($0.tid) == tid }
