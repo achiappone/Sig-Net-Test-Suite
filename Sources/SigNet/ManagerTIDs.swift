@@ -10,7 +10,7 @@ public struct ManagerTID: Identifiable, Hashable {
     public let family: String
     public let get: Bool
     public let set: Bool
-    let scope: String // R root, D data EP, R+D both
+    public let scope: String // R root, D data EP, R+D both
     let kind: Kind
     public let layout: String
     public var id: UInt16 { tid }

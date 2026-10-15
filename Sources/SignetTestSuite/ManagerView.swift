@@ -326,6 +326,30 @@ extension Manager {
 func parameterRow(_ manager: Manager, _ device: ManagerDevice, ep: UInt16, tid: UInt16) -> ReadoutRow {
     let current = device.params[ep]?[tid]
     let target = device.tuid
+    if tid >= 0x8000, tid <= 0xFF00, let m = ManufacturerTIDs.entry(esta: mgrU16(target), tid: tid) {
+        return manufacturerRow(manager, device, ep: ep, tid: tid, m)
+    }
+    // RT_REBOOT (§11.6.10) and RT_OFFBOARD are commands, not settings: SET only (they can't be read), each with its
+    // fixed magic word, and asked for first.
+    if tid == 0x060A || tid == 0x0401 {
+        let boot = Array("BOOT".utf8)
+        let options: [(label: String, value: [UInt8], warning: String)] = tid == 0x060A
+            ? [("Restart software", [0xFE] + boot, "The device restarts its software and drops off the network for a moment."),
+               ("Reboot hardware", [0xFF] + boot, "The device reboots completely and is off the network until it's back up.")]
+            : [("Offboard", Array("WIPE".utf8), "The device forgets its passphrase and leaves Secure mode. Devices usually only accept this shortly after power-on.")]
+        return ReadoutRow(label: ManagerLabels.title(tid), value: nil,
+                          set: .choices(options.map(\.label)) { i, done in
+                              let alert = NSAlert()
+                              alert.alertStyle = .warning
+                              alert.messageText = "\(options[i].label)?"
+                              alert.informativeText = options[i].warning
+                              alert.addButton(withTitle: "Cancel")
+                              alert.addButton(withTitle: options[i].label)
+                              guard alert.runModal() == .alertSecondButtonReturn else { return done(.refused("Cancelled")) }
+                              manager.setSignal(target, ep: ep, tid: tid, value: options[i].value, done: done)
+                          },
+                          enabled: manager.running && !manager.busy)
+    }
     let setMode: SetMode?
     if let options = ManagerLabels.multiByteChoices[tid] {
         return ReadoutRow(label: ManagerLabels.title(tid), value: current.map { ManagerLabels.value(tid, $0) },
@@ -346,13 +370,74 @@ func parameterRow(_ manager: Manager, _ device: ManagerDevice, ep: UInt16, tid: 
             guard let v = ManagerLabels.encode(tid, text) else { return done(.refused("Not a valid value for \(ManagerLabels.title(tid).lowercased())")) }
             manager.setSignal(target, ep: ep, tid: tid, value: v, done: done)
         }
+    case nil where ManagerTID.byTID[tid] == nil && tid >= 0x8000:
+        // A manufacturer TID the catalogue doesn't know: raw hex both ways; the device refuses what it won't take.
+        setMode = .text(initial: current.map(mgrHex) ?? "") { text, done in
+            guard let v = mgrBytes(hex: text), !v.isEmpty else { return done(.refused("Enter the value as hex bytes")) }
+            manager.setSignal(target, ep: ep, tid: tid, value: v, done: done)
+        }
     case nil:
         setMode = nil
     }
-    let gettable = ManagerTID.byTID[tid]?.get ?? false
+    let gettable = ManagerTID.byTID[tid]?.get ?? (tid >= 0x8000)
     return ReadoutRow(label: ManagerLabels.title(tid),
                       value: current.map { ManagerLabels.value(tid, $0) },
                       get: gettable ? { done in manager.getSignal(target, ep: ep, tid: tid, done: done) } : nil,
+                      set: setMode,
+                      enabled: manager.running && !manager.busy)
+}
+
+/// A manufacturer TID named in ManufacturerTIDs: its name, and a number in its range (or raw hex) both ways.
+private func manufacturerRow(_ manager: Manager, _ device: ManagerDevice, ep: UInt16, tid: UInt16, _ m: ManufacturerTIDs.Entry) -> ReadoutRow {
+    let current = device.params[ep]?[tid], target = device.tuid
+    let width = [1, 2, 4].contains(m.bytes ?? 1) ? m.bytes ?? 1 : 1
+    let number = m.min != nil || m.max != nil
+    let range = (m.min ?? 0)...max(m.min ?? 0, m.max ?? (Int64(1) << (8 * width)) - 1)
+    let decimal = { (v: [UInt8]) -> Int64? in v.count == width ? v.reduce(Int64(0)) { $0 << 8 | Int64($1) } : nil }
+    // Every SET goes through here: the entry's warning first, when it has one.
+    let send = { (v: [UInt8], done: @escaping (Signal) -> Void) in
+        if let warning = m.confirm, v.contains(where: { $0 != 0 }) {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "Send \(m.name)?"
+            alert.informativeText = warning
+            alert.addButton(withTitle: "Cancel")
+            alert.addButton(withTitle: "Send")
+            guard alert.runModal() == .alertSecondButtonReturn else { return done(.refused("Cancelled")) }
+        }
+        manager.setSignal(target, ep: ep, tid: tid, value: v, done: done)
+    }
+    let setMode: SetMode?
+    if m.settable == false {
+        setMode = nil
+    } else if let choices = m.choices, !choices.isEmpty {
+        setMode = .choices(choices.map(\.label)) { i, done in
+            guard let v = mgrBytes(hex: choices[i].hex), !v.isEmpty else { return done(.refused("\(choices[i].label): not hex in the table")) }
+            send(v, done)
+        }
+    } else if number {
+        setMode = .number(initial: current.flatMap(decimal).map(String.init) ?? "", range: range) { text, done in
+            guard let n = Int64(text), range.contains(n) else { return done(.refused("\(m.name): \(range.lowerBound)-\(range.upperBound)")) }
+            send((0..<width).reversed().map { UInt8(truncatingIfNeeded: n >> (8 * $0)) }, done)
+        }
+    } else {
+        setMode = .text(initial: current.map(mgrHex) ?? "") { text, done in
+            guard let v = mgrBytes(hex: text), !v.isEmpty else { return done(.refused("Enter the value as hex bytes")) }
+            send(v, done)
+        }
+    }
+    // Named parts of the value ("Patched 3 · Unaddressed 0"), big-endian; anything left over or short stays hex.
+    let described = { (v: [UInt8]) -> String? in
+        guard let fields = m.fields, fields.reduce(0, { $0 + $1.bytes }) == v.count else { return nil }
+        var i = 0
+        return fields.map { f in
+            defer { i += f.bytes }
+            return "\(f.name) \(v[i..<i + f.bytes].reduce(Int64(0)) { $0 << 8 | Int64($1) })"
+        }.joined(separator: " · ")
+    }
+    return ReadoutRow(label: m.name,
+                      value: current.map { v in described(v) ?? (number ? decimal(v).map(String.init) ?? mgrHex(v) : mgrHex(v)) },
+                      get: { done in manager.getSignal(target, ep: ep, tid: tid, done: done) },
                       set: setMode,
                       enabled: manager.running && !manager.busy)
 }
