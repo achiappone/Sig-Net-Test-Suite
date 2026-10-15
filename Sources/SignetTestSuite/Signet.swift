@@ -7,29 +7,35 @@ import SigNet
 final class SecuritySettings: SecurityConfig, ObservableObject {
     let objectWillChange = ObservableObjectPublisher()
     private var saveQueued = false
+    /// What the Keychain holds. Only a real change is written, so a failed or denied read never deletes the item.
+    private var savedPassphrase = ""
+    /// Snapshot's --passphrase, --scope and --interface are for that run only; they never replace the saved settings.
+    private let persist = !Snapshot.args.contains { ["--passphrase", "--scope", "--interface"].contains($0) }
 
-    /// Restores the last mode, scope, interface and passphrase, so a relaunch talks to the same network.
+    /// Restores the last mode, scope and passphrase, so a relaunch talks to the same network. main.swift restores the NIC.
     override init() {
         super.init()
         let d = UserDefaults.standard
         mode = d.string(forKey: "security.mode").flatMap(SecurityMode.init(rawValue:)) ?? .open
         scope = d.string(forKey: "security.scope") ?? scope
-        interface = d.string(forKey: "security.interface") ?? ""
         passphrase = Keychain.read() ?? ""
+        savedPassphrase = passphrase
     }
 
     override func willChange() {
         objectWillChange.send()
         // willChange fires before the new value lands; save once it has, and once per burst of keystrokes.
-        guard !saveQueued else { return }
+        guard persist, !saveQueued else { return }
         saveQueued = true
         DispatchQueue.main.async { [self] in
             saveQueued = false
             let d = UserDefaults.standard
             d.set(mode.rawValue, forKey: "security.mode")
             d.set(scope, forKey: "security.scope")
-            d.set(interface, forKey: "security.interface")
-            Keychain.write(passphrase)
+            if passphrase != savedPassphrase {
+                Keychain.write(passphrase)
+                savedPassphrase = passphrase
+            }
         }
     }
 }
