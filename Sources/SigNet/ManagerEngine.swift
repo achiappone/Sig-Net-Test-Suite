@@ -220,7 +220,7 @@ open class ManagerEngine {
     }
 
     @discardableResult
-    private func send(_ path: [String], _ tlvs: [ManagerTLV], key: SymmetricKey?, to host: String) -> Bool {
+    private func send(_ path: [String], _ tlvs: [ManagerTLV], key: SymmetricKey?, to host: String, mfg: UInt16? = nil) -> Bool {
         guard let socket, let lane = nextLane() else { return false }
         var p = ManagerPacket()
         p.mid = mid
@@ -228,8 +228,9 @@ open class ManagerEngine {
         p.segs = ["sig-net", "v1", scope] + path
         p.mode = secure ? 0x00 : 0x01
         p.tuid = tuid
-        // §10.1.2: proprietary TIDs (0x8000-0xFF00) are only interpreted under the sender's ESTA ID.
-        if tlvs.contains(where: { (0x8000...0xFF00).contains($0.tid) }) { p.mfg = mgrU16(tuid) }
+        // §10.1.2: proprietary TIDs (0x8000-0xFF00) are only interpreted under the right ESTA ID: our own on what we
+        // originate, the target Node's on a command to it (docs/manager-semantics.md).
+        if tlvs.contains(where: { (0x8000...0xFF00).contains($0.tid) }) { p.mfg = mfg ?? mgrU16(tuid) }
         (p.session, p.seq) = lane
         p.payload = ManagerTLV.encode(tlvs)
         if secure, let key { p.sign(key) }
@@ -267,7 +268,7 @@ open class ManagerEngine {
     private func command(_ target: [UInt8], _ ep: UInt16, _ tlvs: [ManagerTLV], attempt: Int) {
         let host = unicast && attempt == 0 ? devices[Identity.hex(target)]?.ip ?? "" : ""
         let key = keys == nil ? nil : keys!.kmLocal(target)
-        send(["manager", Identity.hex(target), String(ep)], tlvs, key: key, to: host.isEmpty ? Self.sendGroup : host)
+        send(["manager", Identity.hex(target), String(ep)], tlvs, key: key, to: host.isEmpty ? Self.sendGroup : host, mfg: mgrU16(target))
     }
 
     private func begin(_ p: Pending) {
