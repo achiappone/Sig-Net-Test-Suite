@@ -211,7 +211,8 @@ private struct ManagerFixturePanel: View {
                 }
             }
             ModulePanel("Channels") {
-                Button("Read channels") { loadChannels() }.buttonStyle(.softKey).disabled(!enabled)
+                // The layout may have changed elsewhere (front panel, another controller): footprint and personality first.
+                Button("Read channels") { get(0x0060) { _ in get(0x00E0) { _ in loadChannels() } } }.buttonStyle(.softKey).disabled(!enabled)
             } content: {
                 if f.channels.isEmpty {
                     Text(f.footprint.map { "\($0) channels. Press Read channels for what each one does." } ?? "Press Read channels for what each one does.")
@@ -394,6 +395,7 @@ private struct ManagerFixturePanel: View {
         rdm(false, 0x0120, []) { pd in
             let offsets: [UInt16] = pd.map { p in stride(from: 0, to: p.count - 4, by: 5).map { mgrU16(p[$0...]) } }
                 ?? (0..<(f.footprint ?? 0)).map(UInt16.init)
+            store.byUID[uid, default: .init()].channels = [:] // a fresh read replaces the list; a shorter layout leaves no stale channels
             runSteps(offsets.map { slot in { next in
                 rdm(false, 0x0121, mgrBE16(slot)) { d in
                     store.byUID[uid, default: .init()].channels[slot] = d.map { String(decoding: $0.dropFirst(2), as: UTF8.self) } ?? "No description"
