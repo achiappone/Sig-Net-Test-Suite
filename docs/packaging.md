@@ -8,6 +8,10 @@ scripts/make-app.sh             # builds build/Sig-Net Test Suite.app
 scripts/make-app.sh --install   # same, then copies it to /Applications
 ```
 
+`npm run install:mac` runs the second line: it rebuilds from this folder and
+replaces /Applications/Sig-Net Test Suite.app. Quit and reopen the app to run
+the new build.
+
 ## What the script does
 
 1. Runs `swift build -c release`.
