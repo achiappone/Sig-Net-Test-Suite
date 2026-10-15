@@ -14,6 +14,7 @@ public struct ManagerDevice: Identifiable {
     public var params: [UInt16: [UInt16: [UInt8]]] = [:] // ep → tid → last value seen
     public var tod: [UInt16: [[UInt8]]] = [:]           // ep → UIDs
     public var rdm: [String] = []                       // RDM responses seen (newest last)
+    public var security: [UInt16: [UInt8]] = [:]        // §10.9 event code → last TID_DG_SECURITY_EVENT value
 
     public func root(_ tid: UInt16) -> [UInt8]? { params[0]?[tid] }
     public func text(_ tid: UInt16) -> String { root(tid).map { ManagerTID.describe(tid, $0) } ?? "–" }
@@ -444,6 +445,9 @@ open class ManagerEngine {
             case 0x0304 where v.count >= 2:
                 if v[0] == 1 { d.tod[uri.ep] = [] }
                 d.tod[uri.ep, default: []] += stride(from: 2, to: v.count - 5, by: 6).map { Array(v[$0..<$0 + 6]) }
+            case 0xFF01 where v.count >= 7: // §10.9: one TLV per event code, so not one value per TID
+                d.security[mgrU16(v)] = v
+                if mgrU32(v[2...]) > 0 { d.anomaly = "Security event: " + ManagerTID.describe(0xFF01, v) }
             default:
                 d.params[uri.ep, default: [:]][tlv.tid] = v
             }
