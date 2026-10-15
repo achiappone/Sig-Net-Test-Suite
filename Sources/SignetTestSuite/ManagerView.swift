@@ -393,7 +393,9 @@ private func manufacturerRow(_ manager: Manager, _ device: ManagerDevice, ep: UI
     let current = device.params[ep]?[tid], target = device.tuid
     let width = [1, 2, 4].contains(m.bytes ?? 1) ? m.bytes ?? 1 : 1
     let number = m.min != nil || m.max != nil
-    let range = (m.min ?? 0)...max(m.min ?? 0, m.max ?? (Int64(1) << (8 * width)) - 1)
+    // Unsigned, so never wider than `width` bytes hold: a max of 1000 on one byte would otherwise send 1000 & 0xFF.
+    let cap = (Int64(1) << (8 * width)) - 1, lo = min(max(m.min ?? 0, 0), cap)
+    let range = lo...max(lo, min(m.max ?? cap, cap))
     let decimal = { (v: [UInt8]) -> Int64? in v.count == width ? v.reduce(Int64(0)) { $0 << 8 | Int64($1) } : nil }
     // Every SET goes through here: the entry's warning first, when it has one.
     let send = { (v: [UInt8], done: @escaping (Signal) -> Void) in

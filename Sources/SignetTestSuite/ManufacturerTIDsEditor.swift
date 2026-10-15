@@ -87,11 +87,17 @@ struct ManufacturerTIDsEditor: View {
             }
             .frame(minHeight: 220)
             if let error { Text(error).font(.system(size: 11)).foregroundStyle(Color.red) }
+            // Saving now would replace the unreadable file with this empty table, so it waits until the file is fixed.
+            if let problem = ManufacturerTIDs.problem {
+                Text("\(problem). Fix or delete \(ManufacturerTIDs.url.path) to edit the table here.")
+                    .font(.system(size: 11)).foregroundStyle(Color.red).textSelection(.enabled)
+            }
             HStack {
                 Button("Add row") { rows.append(Row()) }.buttonStyle(.softKey)
                 Spacer()
                 Button("Cancel") { dismiss() }.buttonStyle(.softKey).keyboardShortcut(.cancelAction)
                 Button("Save", action: save).buttonStyle(.softKey).keyboardShortcut(.defaultAction)
+                    .disabled(ManufacturerTIDs.problem != nil)
             }
         }
         .padding(16)

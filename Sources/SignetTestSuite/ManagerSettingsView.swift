@@ -1,4 +1,3 @@
-import AppKit
 import SigNet
 import SwiftUI
 
@@ -13,6 +12,8 @@ struct ManagerSettingsView: View {
     private static let networkOrder: [UInt16] = [0x0501, 0x0502, 0x0503, 0x0504, 0x0505, 0x0506, 0x0581, 0x0582, 0x0583, 0x0584, 0x0585]
     private static let portOrder: [UInt16] = [0x0901, 0x0902, 0x0905, 0x090C, 0x0907, 0x090B, 0x0908, 0x0909, 0x0906, 0x0903,
                                               0x0904, 0x090A, 0x0305, 0x0306, 0xFF03]
+    /// On the Info tab already (Device and Health), and the supported list itself: not repeated under Other parameters.
+    private static let elsewhere: [UInt16] = [0x0601, 0x0602, 0x0603, 0x0604, 0x0608, 0x0609, 0x060B, 0xFF01]
 
     /// What the device reports it supports; everything when it hasn't said yet.
     private var supported: Set<UInt16>? {
@@ -23,7 +24,7 @@ struct ManagerSettingsView: View {
     /// Supported parameters no list above names, manufacturer ones included: root (or unknown) ones, or data-port ones.
     private func others(port: Bool) -> [UInt16] {
         guard let supported else { return [] }
-        let listed = Set(Self.rootOrder + Self.networkOrder + Self.portOrder)
+        let listed = Set(Self.rootOrder + Self.networkOrder + Self.portOrder + Self.elsewhere)
         return supported.filter { tid in
             guard !listed.contains(tid) else { return false }
             guard let t = ManagerTID.byTID[tid] else { return !port && tid >= 0x8000 } // unknown standard TIDs aren't parameters
