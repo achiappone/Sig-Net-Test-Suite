@@ -87,6 +87,7 @@ struct AppView: View {
 /// Mode, passphrase and scope shared by every device the app creates; locked while any device runs.
 struct SecurityPanel: View {
     @ObservedObject var settings: SecuritySettings
+    @State private var reveal = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -94,8 +95,19 @@ struct SecurityPanel: View {
                 .help("Security mode for every device the app creates")
             if settings.mode == .secure {
                 ReadoutWindow(signal: settings.passphraseProblem == nil ? .idle : .refused("")) {
-                    SecureField("Passphrase", text: $settings.passphrase)
+                    HStack(spacing: 6) {
+                        Group {
+                            if reveal { TextField("Passphrase", text: $settings.passphrase) }
+                            else { SecureField("Passphrase", text: $settings.passphrase) }
+                        }
                         .textFieldStyle(.plain).font(.system(size: 13, design: .monospaced)).foregroundStyle(Color.ink)
+                        Button { reveal.toggle() } label: {
+                            Image(systemName: reveal ? "eye.slash" : "eye").foregroundStyle(Color.silk)
+                        }
+                        .buttonStyle(.plain)
+                        .help(reveal ? "Hide passphrase" : "Show passphrase")
+                        .accessibilityLabel(reveal ? "Hide passphrase" : "Show passphrase")
+                    }
                 }
                 .frame(width: 220)
                 .help(settings.passphraseProblem ?? "Passphrase OK")
