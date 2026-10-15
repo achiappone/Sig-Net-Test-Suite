@@ -29,12 +29,27 @@ macOS asks for local network access the first time the app runs. Click Allow.
 If you don't, the app can't send or receive any Sig-Net traffic. To change the
 answer later, open System Settings → Privacy & Security → Local Network.
 
+## Sharing with other Macs
+
+```sh
+npm run package:mac      # or scripts/make-dmg.sh
+```
+
+Builds `build/Sig-Net Test Suite.dmg`: the app as one binary for Apple Silicon
+and Intel (macOS 13 or later), beside an Applications shortcut. Copy the DMG to
+a USB stick; on the other Mac, open it and drag the app onto Applications. The
+universal build needs Xcode; the command line tools alone build only this Mac's
+architecture. `package.json` exists only so IDEs such as WebStorm list the
+script: there is nothing to `npm install`.
+
 ## Limits
 
-- **This Mac only.** The ad-hoc signature only works on the Mac that built
-  the app. Giving it to someone else needs a Developer ID signature plus
-  notarization (`notarytool`, using the App Store Connect key at
-  `$ASC_KEY_PATH`). The script doesn't do this yet.
+- **Ad-hoc signed.** macOS only checks the signature of quarantined files,
+  and a file copied from a USB stick isn't quarantined, so the DMG below
+  opens on any Mac that way. A downloaded, emailed or AirDropped copy is
+  quarantined: the first open is refused, then System Settings → Privacy &
+  Security → Open Anyway allows it. Removing that step needs a Developer ID
+  signature plus notarization (`notarytool`), which the scripts don't do.
 - **Generic icon.** The logo is a wide banner (880×224) and would look
   squashed as a square icon. A square mark would need converting to `.icns`
   (`sips` + `iconutil`) and setting as `CFBundleIconFile`.

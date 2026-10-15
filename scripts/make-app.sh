@@ -8,8 +8,10 @@ cd "$(dirname "$0")/.."
 NAME="Sig-Net Test Suite"
 APP="build/$NAME.app"
 
-swift build -c release
-BIN="$(swift build -c release --show-bin-path)"
+# UNIVERSAL=1: Apple Silicon + Intel in one binary (needs Xcode, not just the command line tools).
+ARCHS="${UNIVERSAL:+--arch arm64 --arch x86_64}"
+swift build -c release $ARCHS
+BIN="$(swift build -c release $ARCHS --show-bin-path)"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"

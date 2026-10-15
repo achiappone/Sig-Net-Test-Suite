@@ -1,0 +1,8 @@
+{
+  "name": "sig-net-test-suite",
+  "private": true,
+  "description": "npm scripts for IDEs that run them (WebStorm). The project itself is SwiftPM; nothing to npm install.",
+  "scripts": {
+    "package:mac": "scripts/make-dmg.sh"
+  }
+}
