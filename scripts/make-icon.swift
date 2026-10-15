@@ -4,7 +4,7 @@ import AppKit
 
 let args = CommandLine.arguments
 guard args.count == 3, let logo = NSImage(contentsOfFile: args[1]) else { fatalError("usage: make-icon.swift <logo.png> <out.png>") }
-let size = 1024.0, inset = 100.0 // Apple's grid: an 824 px body on a 1024 canvas
+let size: CGFloat = 1024, inset: CGFloat = 100 // Apple's grid: an 824 px body on a 1024 canvas
 let teal = NSColor(srgbRed: 0.04, green: 0.37, blue: 0.38, alpha: 1)
 
 let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size), pixelsHigh: Int(size), bitsPerSample: 8,
