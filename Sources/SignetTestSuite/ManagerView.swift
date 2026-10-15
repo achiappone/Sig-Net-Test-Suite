@@ -1,3 +1,4 @@
+import AppKit
 import SigNet
 import SwiftUI
 
@@ -335,13 +336,7 @@ func parameterRow(_ manager: Manager, _ device: ManagerDevice, ep: UInt16, tid: 
             : [("Offboard", Array("WIPE".utf8), "The device forgets its passphrase and leaves Secure mode. Devices usually only accept this shortly after power-on.")]
         return ReadoutRow(label: ManagerLabels.title(tid), value: nil,
                           set: .choices(options.map(\.label)) { i, done in
-                              let alert = NSAlert()
-                              alert.alertStyle = .warning
-                              alert.messageText = "\(options[i].label)?"
-                              alert.informativeText = options[i].warning
-                              alert.addButton(withTitle: "Cancel")
-                              alert.addButton(withTitle: options[i].label)
-                              guard alert.runModal() == .alertSecondButtonReturn else { return done(.refused("Cancelled")) }
+                              guard confirm("\(options[i].label)?", options[i].warning, button: options[i].label) else { return done(.refused("Cancelled")) }
                               manager.setSignal(target, ep: ep, tid: tid, value: options[i].value, done: done)
                           },
                           enabled: manager.running && !manager.busy)
@@ -355,7 +350,17 @@ func parameterRow(_ manager: Manager, _ device: ManagerDevice, ep: UInt16, tid: 
     }
     switch ManagerLabels.editor(tid) {
     case .choice(let options):
-        setMode = .choices(options.map(\.1)) { i, done in manager.setSignal(target, ep: ep, tid: tid, value: [options[i].0], done: done) }
+        setMode = .choices(options.map(\.1)) { i, done in
+            // §11.7.11: switching a Secure Node's port to Art-Net/sACN drops authentication from its level data, so the
+            // Manager shall warn and get the operator's confirmation first.
+            if tid == 0x090B, options[i].0 != 0, manager.securitySettings.mode == .secure,
+               !confirm("Switch Port \(ep) to \(options[i].1)?",
+                        "Level data on this port will no longer be authenticated: anyone on the network can drive it. Sig-Net management stays secure.",
+                        button: "Switch") {
+                return done(.refused("Cancelled"))
+            }
+            manager.setSignal(target, ep: ep, tid: tid, value: [options[i].0], done: done)
+        }
     case .number(let r):
         setMode = .number(initial: ManagerLabels.draft(tid, current), range: Int64(r.lowerBound)...Int64(r.upperBound)) { text, done in
             guard let v = ManagerLabels.encode(tid, text) else { return done(.refused("Not a valid value for \(ManagerLabels.title(tid).lowercased())")) }
@@ -392,14 +397,8 @@ private func manufacturerRow(_ manager: Manager, _ device: ManagerDevice, ep: UI
     let decimal = { (v: [UInt8]) -> Int64? in v.count == width ? v.reduce(Int64(0)) { $0 << 8 | Int64($1) } : nil }
     // Every SET goes through here: the entry's warning first, when it has one.
     let send = { (v: [UInt8], done: @escaping (Signal) -> Void) in
-        if let warning = m.confirm, v.contains(where: { $0 != 0 }) {
-            let alert = NSAlert()
-            alert.alertStyle = .warning
-            alert.messageText = "Send \(m.name)?"
-            alert.informativeText = warning
-            alert.addButton(withTitle: "Cancel")
-            alert.addButton(withTitle: "Send")
-            guard alert.runModal() == .alertSecondButtonReturn else { return done(.refused("Cancelled")) }
+        if let warning = m.confirm, v.contains(where: { $0 != 0 }), !confirm("Send \(m.name)?", warning, button: "Send") {
+            return done(.refused("Cancelled"))
         }
         manager.setSignal(target, ep: ep, tid: tid, value: v, done: done)
     }
@@ -436,6 +435,17 @@ private func manufacturerRow(_ manager: Manager, _ device: ManagerDevice, ep: UI
                       get: { done in manager.getSignal(target, ep: ep, tid: tid, done: done) },
                       set: setMode,
                       enabled: manager.running && !manager.busy)
+}
+
+/// A modal warning with Cancel as the default; true = the operator chose `button`.
+private func confirm(_ title: String, _ detail: String, button: String) -> Bool {
+    let alert = NSAlert()
+    alert.alertStyle = .warning
+    alert.messageText = title
+    alert.informativeText = detail
+    alert.addButton(withTitle: "Cancel")
+    alert.addButton(withTitle: button)
+    return alert.runModal() == .alertSecondButtonReturn
 }
 
 // MARK: - Info
