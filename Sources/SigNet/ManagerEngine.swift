@@ -428,6 +428,10 @@ open class ManagerEngine {
         default: if presence || d.state == "Lost" { d.state = open ? "Online (Open, unauthenticated)" : "Online" }
         }
         var repoll = false
+        // §11.8.1 counters are lifetime totals, so only a rise is news. The first answer to our own GET is the baseline;
+        // an unprompted report is the Node saying an event just happened (§10.9).
+        let askedEvents = pending.map { $0.target == t && $0.tlvs.contains { $0.tid == 0xFF01 } } ?? false
+        var rose: [UInt8]?, quiet = false
         for tlv in tlvs {
             let v = tlv.value
             switch tlv.tid {
@@ -447,12 +451,16 @@ open class ManagerEngine {
                 if v[0] == 1 { d.tod[uri.ep] = [] }
                 d.tod[uri.ep, default: []] += stride(from: 2, to: v.count - 5, by: 6).map { Array(v[$0..<$0 + 6]) }
             case 0xFF01 where v.count >= 7: // §10.9: one TLV per event code, so not one value per TID
-                d.security[mgrU16(v)] = v
-                if mgrU32(v[2...]) > 0 { d.anomaly = "Security event: " + ManagerTID.describe(0xFF01, v) }
+                let code = mgrU16(v), n = mgrU32(v[2...])
+                let before = d.security[code].map { mgrU32($0[2...]) } ?? (askedEvents ? n : 0)
+                if n > before { rose = v } else { quiet = true }
+                d.security[code] = v
             default:
                 d.params[uri.ep, default: [:]][tlv.tid] = v
             }
         }
+        if let v = rose { d.anomaly = "Security event: " + ManagerTID.describe(0xFF01, v) }
+        else if quiet, d.anomaly.hasPrefix("Security event") { d.anomaly = "" } // re-read, nothing new: settled
         devices[id] = d
         if repoll, Date().timeIntervalSince(repolled[id] ?? .distantPast) > 1 { // CHANGE_COUNT moved under us (§10.4.4)
             repolled[id] = Date()
