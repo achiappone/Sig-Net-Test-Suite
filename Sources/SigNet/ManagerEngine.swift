@@ -439,9 +439,10 @@ open class ManagerEngine {
         default: if presence || d.state == "Lost" { d.state = open ? "Online (Open, unauthenticated)" : "Online" }
         }
         var repoll = false
-        // §11.8.1 counters are lifetime totals, so only a rise is news. The first answer to our own GET is the baseline;
-        // an unprompted report is the Node saying an event just happened (§10.9).
-        let askedEvents = pending.map { $0.target == t && $0.tlvs.contains { $0.tid == 0xFF01 } } ?? false
+        // §11.8.1 counters are lifetime totals, so only a rise is news. The first value in a poll reply (level 3) or in
+        // the answer to our own GET is the baseline; an unprompted report (§10.9, never with a POLL_REPLY) is an event
+        // that just happened.
+        let askedEvents = presence || (pending.map { $0.target == t && $0.tlvs.contains { $0.tid == 0xFF01 } } ?? false)
         var rose: [UInt8]?, quiet = false
         for tlv in tlvs {
             let v = tlv.value

@@ -99,7 +99,7 @@ public struct ManagerTID: Identifiable, Hashable {
         case 0xFF01 where v.count >= 7:
             let code = mgrU16(v)
             var s = (securityEvents[code] ?? String(format: "code 0x%04X", code)) + " × \(mgrU32(v[2...]))"
-            if v[6] == 1, v.count >= 11 { s += ", last from " + ip4(Array(v[7..<11])) }
+            if v[6] == 1, v.count >= 11, v[7..<11].contains(where: { $0 != 0 }) { s += ", last from " + ip4(Array(v[7..<11])) } // 0.0.0.0 = unknown (a ChamSys GN2 sends that rather than type 0)
             if v[6] == 2, v.count >= 23 { s += ", last from " + stride(from: 7, to: 23, by: 2).map { String(format: "%x", mgrU16(v[$0...])) }.joined(separator: ":") }
             return s
         default: break
