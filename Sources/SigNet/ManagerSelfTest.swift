@@ -98,6 +98,13 @@ extension ManagerEngine {
                 return "wrong passphrase: Node reply was not flagged auth FAIL"
             }
             guard intruder.devices[id]?.anomaly.contains("FAIL") == true else { return "wrong passphrase: no anomaly raised for \(id)" }
+
+            // §10.9: the wrong-key GETs raised the Node's HMAC counter. A rise flags the device; a re-read with no new
+            // failures clears it, since the counter is a lifetime total and old failures aren't news.
+            _ = wait { m.get(dev.tuid, ep: 0, tids: [0xFF01], done: $0) }
+            guard m.devices[id]?.anomaly.hasPrefix("Security event") == true else { return "security event: HMAC rise not flagged" }
+            _ = wait { m.get(dev.tuid, ep: 0, tids: [0xFF01], done: $0) }
+            guard m.devices[id]?.anomaly.isEmpty == true else { return "security event: still flagged with no new failures" }
         }
         return nil
     }
