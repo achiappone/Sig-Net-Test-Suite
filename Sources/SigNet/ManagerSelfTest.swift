@@ -104,6 +104,16 @@ extension ManagerEngine {
             guard m.devices[id]?.anomaly.hasPrefix("Security event") == true else { return "security event: HMAC rise not flagged" }
             _ = wait { m.get(dev.tuid, ep: 0, tids: [0xFF01], done: $0) }
             guard m.devices[id]?.anomaly.isEmpty == true else { return "security event: still flagged with no new failures" }
+            // A Manager that first sees the counter in a level-3 refresh takes it as history, not as an event.
+            let late = ManagerEngine(settings: s, tuid: [0x7F, 0xF0, 0xC0, 0xDE, 0x00, 0x02])
+            late.heartbeat = false
+            late.start()
+            guard late.running else { return "late manager: \(late.status)" }
+            defer { late.stop() }
+            late.poll(lo: dev.tuid, hi: dev.tuid, level: 3, ep: 0xFFFF)
+            spin(3) { late.devices[id]?.security[0x0001] != nil }
+            guard late.devices[id]?.security[0x0001] != nil else { return "security event: level-3 poll reply carried no counters" }
+            guard late.devices[id]?.anomaly.isEmpty == true else { return "security event: old failures flagged on first refresh" }
         }
         return nil
     }
