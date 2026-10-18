@@ -106,6 +106,8 @@ public struct ManagerTID: Identifiable, Hashable {
         case (.u32, 4): return "\(mgrU32(v))"
         case (.bits8, 1): return bits(UInt32(v[0]))
         case (.bits32, 4): return bits(mgrU32(v))
+        case (.bits32, 6) where tid == 0x0904: // PF V1.11 §11.7.4: [0-3] bits, [4-5] Maximum Merge Sources
+            return describe(tid, Array(v.prefix(4))) + " max merge \(mgrU16(v.dropFirst(4)))"
         case (.ipv4, 4): return ip4(v)
         case (.ipv6, 16): return stride(from: 0, to: 16, by: 2).map { String(format: "%x", mgrU16(v[$0...])) }.joined(separator: ":")
         default: return v.isEmpty ? "(empty)" : mgrHex(v)
